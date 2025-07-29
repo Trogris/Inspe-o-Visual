@@ -1,0 +1,39 @@
+# Sistema de Verificação Visual Automatizada
+# Dependências Python para MVP com Upload de Vídeo
+
+# Interface Web
+streamlit>=1.28.0
+
+# Processamento de Vídeo e Imagem
+opencv-python>=4.8.0
+pillow>=10.0.0
+
+# Inteligência Artificial
+ultralytics>=8.0.0
+torch>=2.0.0
+torchvision>=0.15.0
+
+# OCR e Processamento de Texto
+easyocr>=1.7.0
+
+# Análise de Dados
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Banco de Dados
+sqlite3  # Incluído no Python padrão
+
+# Utilitários
+python-dateutil>=2.8.0
+requests>=2.31.0
+
+# Desenvolvimento e Testes (opcional)
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Observações:
+# - torch e torchvision são instalados automaticamente pelo ultralytics
+# - easyocr pode demorar no primeiro uso (download de modelos)
+# - opencv-python inclui todas as funcionalidades necessárias
+# - streamlit>=1.28.0 para suporte completo a file_uploader
+
