@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Sistema de Verificação Visual Automatizada - Interface Limpa e Responsiva
-Análise frame-by-frame com bounding boxes e checklist automático
+Sistema de Verificação Visual Automatizada
+Interface Streamlit - Versão Final Estável
 """
 
 import streamlit as st
@@ -9,11 +9,25 @@ import cv2
 import numpy as np
 import pandas as pd
 from datetime import datetime
-import os
-import sys
-from PIL import Image
 import tempfile
+import os
 import json
+from typing import Dict, List, Optional, Tuple
+import logging
+
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Importar módulos do sistema
+try:
+    from video_processor import VideoProcessor
+    from radar_detector import RadarEquipmentDetector
+    from checklist_generator import ChecklistGenerator
+    from data_storage import DataStorage
+except ImportError as e:
+    st.error(f"Erro ao importar módulos: {e}")
+    st.stop()
 
 # Configuração da página
 st.set_page_config(
@@ -23,709 +37,471 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Adicionar diretório src ao path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-# Importar módulos do sistema
-try:
-    from video_processor import VideoProcessor
-    from radar_detector import RadarEquipmentDetector
-    from data_storage import DataStorage
-    from checklist_generator import ChecklistGenerator
-except ImportError as e:
-    st.error(f"Erro ao importar módulos: {e}")
-    st.stop()
-
-# CSS customizado - Design limpo e responsivo
+# CSS para interface limpa
 st.markdown("""
 <style>
-    /* Reset e base */
-    .main .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-        max-width: 1200px;
-    }
-    
-    /* Cabeçalho principal */
     .main-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem;
-        border-radius: 12px;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        padding: 1rem;
+        border-radius: 10px;
         color: white;
         text-align: center;
         margin-bottom: 2rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
     
-    .main-header h1 {
-        margin: 0;
-        font-size: 2.5rem;
-        font-weight: 300;
-        letter-spacing: 1px;
-    }
-    
-    .main-header p {
-        margin: 0.5rem 0 0 0;
-        font-size: 1.1rem;
-        opacity: 0.9;
-    }
-    
-    /* Cards de status */
-    .status-card {
-        padding: 1.5rem;
-        border-radius: 8px;
-        margin: 1rem 0;
-        border-left: 4px solid;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-    
-    .status-approved {
-        background-color: #f0f9f0;
-        border-left-color: #28a745;
-        color: #155724;
-    }
-    
-    .status-rejected {
-        background-color: #fdf2f2;
-        border-left-color: #dc3545;
-        color: #721c24;
-    }
-    
-    .status-review {
-        background-color: #fffbf0;
-        border-left-color: #ffc107;
-        color: #856404;
-    }
-    
-    /* Componentes */
-    .component-item {
-        display: flex;
-        align-items: center;
-        padding: 0.75rem;
-        margin: 0.5rem 0;
-        background: #f8f9fa;
-        border-radius: 6px;
-        border: 1px solid #e9ecef;
-    }
-    
-    .component-ok {
-        border-left: 3px solid #28a745;
-    }
-    
-    .component-missing {
-        border-left: 3px solid #dc3545;
-    }
-    
-    .component-warning {
-        border-left: 3px solid #ffc107;
-    }
-    
-    /* Frame container */
-    .frame-container {
-        background: white;
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin: 1rem 0;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        border: 1px solid #e9ecef;
-    }
-    
-    /* Métricas */
-    .metric-container {
+    .metric-card {
         background: white;
         padding: 1rem;
         border-radius: 8px;
-        text-align: center;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-        border: 1px solid #e9ecef;
+        border-left: 4px solid #667eea;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 1rem;
     }
     
-    .metric-value {
-        font-size: 2rem;
+    .status-approved {
+        color: #28a745;
         font-weight: bold;
-        color: #495057;
     }
     
-    .metric-label {
-        font-size: 0.9rem;
-        color: #6c757d;
-        margin-top: 0.5rem;
+    .status-review {
+        color: #dc3545;
+        font-weight: bold;
     }
     
-    /* Upload area */
+    .component-critical {
+        background-color: #fff3cd;
+        padding: 0.5rem;
+        border-radius: 4px;
+        border-left: 3px solid #ffc107;
+        margin: 0.2rem 0;
+    }
+    
+    .component-optional {
+        background-color: #e2e3e5;
+        padding: 0.5rem;
+        border-radius: 4px;
+        border-left: 3px solid #6c757d;
+        margin: 0.2rem 0;
+    }
+    
     .upload-area {
-        border: 2px dashed #ced4da;
-        border-radius: 8px;
+        border: 2px dashed #667eea;
+        border-radius: 10px;
         padding: 2rem;
         text-align: center;
-        background: #f8f9fa;
-        transition: all 0.3s ease;
+        background-color: #f8f9fa;
+        margin: 1rem 0;
     }
     
-    .upload-area:hover {
-        border-color: #667eea;
-        background: #f0f2ff;
-    }
-    
-    /* Sidebar */
-    .sidebar .sidebar-content {
-        background: #f8f9fa;
-    }
-    
-    /* Responsivo */
-    @media (max-width: 768px) {
-        .main-header h1 {
-            font-size: 2rem;
-        }
-        
-        .main .block-container {
-            padding-left: 1rem;
-            padding-right: 1rem;
-        }
-        
-        .frame-container {
-            padding: 1rem;
-        }
-    }
-    
-    /* Botões */
     .stButton > button {
-        border-radius: 6px;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        color: white;
         border: none;
-        font-weight: 500;
-        transition: all 0.3s ease;
+        border-radius: 8px;
+        padding: 0.5rem 2rem;
+        font-weight: bold;
     }
     
     .stButton > button:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-    }
-    
-    /* Checklist */
-    .checklist-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.5rem 0;
-        border-bottom: 1px solid #e9ecef;
-    }
-    
-    .checklist-item:last-child {
-        border-bottom: none;
-    }
-    
-    .checklist-icon {
-        font-size: 1.2rem;
-        margin-right: 0.5rem;
-    }
-    
-    .confidence-bar {
-        width: 100px;
-        height: 8px;
-        background: #e9ecef;
-        border-radius: 4px;
-        overflow: hidden;
-    }
-    
-    .confidence-fill {
-        height: 100%;
-        background: linear-gradient(90deg, #dc3545 0%, #ffc107 50%, #28a745 100%);
-        transition: width 0.3s ease;
+        background: linear-gradient(90deg, #5a6fd8 0%, #6a4190 100%);
+        border: none;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Inicialização de componentes
-@st.cache_resource
-def init_components():
-    """Inicializa componentes do sistema"""
-    video_processor = VideoProcessor()
-    radar_detector = RadarEquipmentDetector()
-    radar_detector.load_model()
-    storage = DataStorage()
-    checklist_generator = ChecklistGenerator()
-    return video_processor, radar_detector, storage, checklist_generator
+def initialize_session_state():
+    """Inicializa variáveis de sessão"""
+    if 'video_processor' not in st.session_state:
+        st.session_state.video_processor = VideoProcessor()
+    
+    if 'radar_detector' not in st.session_state:
+        st.session_state.radar_detector = RadarEquipmentDetector()
+    
+    if 'checklist_generator' not in st.session_state:
+        st.session_state.checklist_generator = ChecklistGenerator()
+    
+    if 'data_storage' not in st.session_state:
+        st.session_state.data_storage = DataStorage()
+    
+    if 'current_video' not in st.session_state:
+        st.session_state.current_video = None
+    
+    if 'extracted_frames' not in st.session_state:
+        st.session_state.extracted_frames = []
+    
+    if 'frame_analyses' not in st.session_state:
+        st.session_state.frame_analyses = []
+    
+    if 'consolidated_checklist' not in st.session_state:
+        st.session_state.consolidated_checklist = None
+    
+    if 'analysis_complete' not in st.session_state:
+        st.session_state.analysis_complete = False
 
-def display_component_status(component_name, component_data):
-    """Exibe status de um componente de forma limpa"""
-    detected = component_data['detected']
-    confidence = component_data['confidence']
-    details = component_data['details']
-    critical = component_data['critical']
-    
-    # Determinar classe CSS
-    if detected:
-        css_class = "component-ok"
-        icon = "✓"
-        status_text = "Detectado"
-        status_color = "#28a745"
-    else:
-        css_class = "component-missing" if critical else "component-warning"
-        icon = "✗" if critical else "○"
-        status_text = "Não detectado" if critical else "Ausente"
-        status_color = "#dc3545" if critical else "#ffc107"
-    
-    # Nome formatado
-    display_name = component_name.replace('_', ' ').title()
-    
-    # HTML do componente
-    component_html = f"""
-    <div class="component-item {css_class}">
-        <div style="display: flex; align-items: center; flex: 1;">
-            <span class="checklist-icon" style="color: {status_color};">{icon}</span>
-            <div>
-                <strong>{display_name}</strong>
-                {' <span style="color: #dc3545; font-size: 0.8rem;">(Crítico)</span>' if critical else ''}
-                <br>
-                <small style="color: #6c757d;">{details}</small>
-            </div>
-        </div>
-        <div style="text-align: right;">
-            <div style="color: {status_color}; font-weight: bold; font-size: 0.9rem;">
-                {status_text}
-            </div>
-            <div class="confidence-bar">
-                <div class="confidence-fill" style="width: {confidence * 100}%;"></div>
-            </div>
-            <small style="color: #6c757d;">{confidence:.1%}</small>
-        </div>
-    </div>
-    """
-    
-    st.markdown(component_html, unsafe_allow_html=True)
-
-def display_frame_analysis(frame_number, frame, analysis_result, checklist_generator):
-    """Exibe análise de um frame com bounding boxes"""
-    
-    st.markdown('<div class="frame-container">', unsafe_allow_html=True)
-    
-    # Cabeçalho do frame
-    col1, col2, col3 = st.columns([2, 1, 1])
-    
-    with col1:
-        st.subheader(f"Frame {frame_number}")
-    
-    with col2:
-        score = analysis_result['overall_score']
-        st.markdown(f"""
-        <div class="metric-container">
-            <div class="metric-value">{score:.1%}</div>
-            <div class="metric-label">Score Geral</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        status = analysis_result['status']
-        if status == 'APROVADO':
-            status_html = '<div class="status-card status-approved"><strong>Aprovado</strong></div>'
-        elif status == 'REPROVADO':
-            status_html = '<div class="status-card status-rejected"><strong>Reprovado</strong></div>'
-        else:
-            status_html = '<div class="status-card status-review"><strong>Revisar</strong></div>'
-        
-        st.markdown(status_html, unsafe_allow_html=True)
-    
-    # Layout principal do frame
-    col_img, col_analysis = st.columns([1, 1])
-    
-    with col_img:
-        # Desenhar bounding boxes
-        annotated_frame = checklist_generator.draw_bounding_boxes(frame, analysis_result)
-        st.image(annotated_frame, caption=f"Frame {frame_number} com detecções", use_container_width=True)
-    
-    with col_analysis:
-        st.markdown("### Checklist de Componentes")
-        
-        # Exibir cada componente
-        for component_name, component_data in analysis_result['components'].items():
-            display_component_status(component_name, component_data)
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-
-def display_consolidated_checklist(consolidated_checklist):
-    """Exibe checklist consolidado"""
-    
-    st.markdown("## Checklist Final Consolidado")
-    
-    info = consolidated_checklist['inspection_info']
-    summary = consolidated_checklist['summary']
-    components = consolidated_checklist['components_analysis']
-    
-    # Informações da inspeção
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("### Informações da Inspeção")
-        st.markdown(f"**Operador:** {info['operator_name']}")
-        st.markdown(f"**OP:** {info['op_number']}")
-        st.markdown(f"**Data/Hora:** {info['inspection_date']}")
-        st.markdown(f"**Arquivo:** {info['video_filename']}")
-    
-    with col2:
-        st.markdown("### Estatísticas")
-        st.markdown(f"**Duração:** {info['video_duration']}")
-        st.markdown(f"**Frames Analisados:** {info['total_frames']}")
-        st.markdown(f"**Score Geral:** {summary['overall_score']:.1%}")
-    
-    # Decisão final
-    st.markdown("### Decisão Final")
-    
-    decision = summary['final_decision']
-    if decision == 'LIBERAR_LACRE':
-        st.markdown("""
-        <div class="status-card status-approved">
-            <h4 style="margin: 0;">✓ EQUIPAMENTO APROVADO - LIBERAR PARA LACRE</h4>
-            <p style="margin: 0.5rem 0 0 0;">Todos os componentes críticos foram detectados adequadamente.</p>
-        </div>
-        """, unsafe_allow_html=True)
-    elif decision == 'REVISAR_EQUIPAMENTO':
-        st.markdown("""
-        <div class="status-card status-review">
-            <h4 style="margin: 0;">⚠ EQUIPAMENTO REQUER REVISÃO</h4>
-            <p style="margin: 0.5rem 0 0 0;">Alguns componentes críticos não foram detectados adequadamente.</p>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown("""
-        <div class="status-card status-rejected">
-            <h4 style="margin: 0;">✗ EQUIPAMENTO REPROVADO</h4>
-            <p style="margin: 0.5rem 0 0 0;">Falhas críticas detectadas. Revisar montagem.</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Análise por componente
-    st.markdown("### Análise por Componente")
-    
-    # Separar componentes críticos e opcionais
-    critical_components = [comp for comp in components.values() if comp['critical']]
-    optional_components = [comp for comp in components.values() if not comp['critical']]
-    
-    # Componentes críticos
-    if critical_components:
-        st.markdown("#### Componentes Críticos")
-        
-        for comp in critical_components:
-            detected = comp['final_status'] == 'DETECTED'
-            icon = "✓" if detected else "✗"
-            color = "#28a745" if detected else "#dc3545"
-            
-            st.markdown(f"""
-            <div class="component-item {'component-ok' if detected else 'component-missing'}">
-                <div style="display: flex; align-items: center; flex: 1;">
-                    <span class="checklist-icon" style="color: {color};">{icon}</span>
-                    <div>
-                        <strong>{comp['component_name']}</strong>
-                        <br>
-                        <small style="color: #6c757d;">
-                            Detectado em {comp['detected_in_frames']}/{comp['total_frames']} frames 
-                            ({comp['detection_rate']:.1%})
-                        </small>
-                    </div>
-                </div>
-                <div style="text-align: right;">
-                    <div style="color: {color}; font-weight: bold; font-size: 0.9rem;">
-                        {comp['final_status'].replace('_', ' ').title()}
-                    </div>
-                    <small style="color: #6c757d;">Conf: {comp['average_confidence']:.1%}</small>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-    
-    # Componentes opcionais
-    if optional_components:
-        st.markdown("#### Componentes Opcionais")
-        
-        for comp in optional_components:
-            detected = comp['final_status'] == 'DETECTED'
-            icon = "✓" if detected else "○"
-            color = "#28a745" if detected else "#6c757d"
-            
-            st.markdown(f"""
-            <div class="component-item">
-                <div style="display: flex; align-items: center; flex: 1;">
-                    <span class="checklist-icon" style="color: {color};">{icon}</span>
-                    <div>
-                        <strong>{comp['component_name']}</strong>
-                        <br>
-                        <small style="color: #6c757d;">
-                            Detectado em {comp['detected_in_frames']}/{comp['total_frames']} frames 
-                            ({comp['detection_rate']:.1%})
-                        </small>
-                    </div>
-                </div>
-                <div style="text-align: right;">
-                    <div style="color: {color}; font-weight: bold; font-size: 0.9rem;">
-                        {comp['final_status'].replace('_', ' ').title()}
-                    </div>
-                    <small style="color: #6c757d;">Conf: {comp['average_confidence']:.1%}</small>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-
-def main():
-    """Função principal da aplicação"""
-    
-    # Cabeçalho principal
+def render_header():
+    """Renderiza cabeçalho da aplicação"""
     st.markdown("""
     <div class="main-header">
         <h1>Sistema de Verificação Visual Automatizada</h1>
         <p>Análise inteligente de equipamentos com IA</p>
     </div>
     """, unsafe_allow_html=True)
+
+def render_sidebar():
+    """Renderiza barra lateral com configurações"""
+    st.sidebar.header("Configuração da Inspeção")
     
-    # Carregar componentes
-    video_processor, radar_detector, storage, checklist_generator = init_components()
+    # Informações do operador
+    operator_name = st.sidebar.text_input(
+        "Nome do Técnico",
+        value="",
+        placeholder="Digite o nome do técnico"
+    )
     
-    # Sidebar com configurações
-    with st.sidebar:
-        st.markdown("### Configurações da Inspeção")
-        
-        operator_name = st.text_input("Nome do Técnico", placeholder="Ex: João Silva")
-        op_number = st.text_input("Número da OP", placeholder="Ex: OP-2025-001")
-        
-        st.markdown("---")
-        
-        st.markdown("### Componentes Monitorados")
-        
-        st.markdown("""
-        **Críticos:**
-        - Etiqueta visível
-        - Tampa encaixada
-        - Parafusos presentes
-        - Conectores instalados
-        - Câmeras
-        
-        **Opcionais:**
-        - Cabeamento
-        - Suportes
-        """)
+    op_number = st.sidebar.text_input(
+        "Número da OP",
+        value="",
+        placeholder="Ex: OP-2025-001"
+    )
     
-    # Seção de upload de vídeo
-    st.markdown("## Upload do Vídeo")
+    st.sidebar.markdown("---")
     
-    uploaded_video = st.file_uploader(
+    # Componentes monitorados
+    st.sidebar.subheader("Componentes Monitorados")
+    
+    st.sidebar.markdown("**Críticos:**")
+    critical_components = [
+        "Etiqueta visível",
+        "Tampa encaixada", 
+        "Parafusos presentes",
+        "Conectores instalados",
+        "Câmeras"
+    ]
+    
+    for component in critical_components:
+        st.sidebar.markdown(f'<div class="component-critical">{component}</div>', 
+                          unsafe_allow_html=True)
+    
+    st.sidebar.markdown("**Opcionais:**")
+    optional_components = [
+        "Cabeamento",
+        "Suportes"
+    ]
+    
+    for component in optional_components:
+        st.sidebar.markdown(f'<div class="component-optional">{component}</div>', 
+                          unsafe_allow_html=True)
+    
+    st.sidebar.markdown("---")
+    
+    # Estatísticas
+    st.sidebar.subheader("Estatísticas")
+    stats = st.session_state.data_storage.get_statistics()
+    
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        st.metric("Total", stats.get('total_inspections', 0))
+    with col2:
+        approval_rate = stats.get('approval_rate', 0)
+        st.metric("Aprovação", f"{approval_rate:.1f}%")
+    
+    return operator_name, op_number
+
+def render_video_upload():
+    """Renderiza área de upload de vídeo"""
+    st.subheader("Upload do Vídeo")
+    
+    uploaded_file = st.file_uploader(
         "Selecione o vídeo do equipamento finalizado",
         type=['mp4', 'mov', 'avi', 'mkv', 'wmv'],
         help="Formatos suportados: MP4, MOV, AVI, MKV, WMV (máximo 100MB)"
     )
     
-    if uploaded_video is not None:
+    if uploaded_file is not None:
         # Validar arquivo
-        if not video_processor.validate_video_file(uploaded_video):
+        if st.session_state.video_processor.validate_video_file(uploaded_file):
+            st.success(f"Vídeo carregado: {uploaded_file.name}")
+            
+            # Obter informações do vídeo
+            video_info = st.session_state.video_processor.get_video_info(uploaded_file)
+            
+            if video_info:
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Duração", f"{video_info['duration']:.1f}s")
+                with col2:
+                    st.metric("Tamanho", f"{video_info['size_mb']:.1f} MB")
+                with col3:
+                    st.metric("Resolução", f"{video_info['resolution'][0]}x{video_info['resolution'][1]}")
+                with col4:
+                    st.metric("FPS", f"{video_info['fps']:.0f}")
+                
+                st.session_state.current_video = uploaded_file
+                return uploaded_file
+        else:
             st.error("Arquivo de vídeo inválido ou muito grande (máximo 100MB)")
+    
+    return None
+
+def render_analysis_section(uploaded_file, operator_name, op_number):
+    """Renderiza seção de análise"""
+    if uploaded_file is None:
+        st.info("Faça upload de um vídeo para iniciar a análise")
+        return
+    
+    if not operator_name or not op_number:
+        st.warning("Preencha o nome do técnico e número da OP na barra lateral")
+        return
+    
+    st.subheader("Análise do Vídeo")
+    
+    # Botão para iniciar análise
+    if st.button("Analisar Vídeo", type="primary"):
+        analyze_video(uploaded_file, operator_name, op_number)
+    
+    # Mostrar resultados se análise foi concluída
+    if st.session_state.analysis_complete:
+        render_analysis_results()
+
+def analyze_video(uploaded_file, operator_name, op_number):
+    """Executa análise completa do vídeo"""
+    try:
+        # Barra de progresso
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        # Passo 1: Extrair frames
+        status_text.text("Extraindo frames do vídeo...")
+        progress_bar.progress(20)
+        
+        frames = st.session_state.video_processor.extract_frames_from_video(uploaded_file, num_frames=10)
+        
+        if not frames:
+            st.error("Falha na extração de frames")
             return
         
-        # Obter informações do vídeo
-        video_info = video_processor.get_video_info(uploaded_video)
+        st.session_state.extracted_frames = frames
         
-        # Exibir informações do vídeo
-        st.success("Vídeo carregado com sucesso!")
+        # Passo 2: Carregar modelo IA
+        status_text.text("Carregando modelo de IA...")
+        progress_bar.progress(40)
         
-        col1, col2, col3, col4 = st.columns(4)
+        st.session_state.radar_detector.load_model()
         
-        with col1:
-            st.markdown(f"""
-            <div class="metric-container">
-                <div class="metric-value">{video_info['filename'][:15]}...</div>
-                <div class="metric-label">Arquivo</div>
-            </div>
-            """, unsafe_allow_html=True)
+        # Passo 3: Analisar frames
+        status_text.text("Analisando frames com IA...")
+        progress_bar.progress(60)
         
-        with col2:
-            st.markdown(f"""
-            <div class="metric-container">
-                <div class="metric-value">{video_info['size_mb']:.1f} MB</div>
-                <div class="metric-label">Tamanho</div>
-            </div>
-            """, unsafe_allow_html=True)
+        analyses = []
+        for i, frame in enumerate(frames):
+            analysis = st.session_state.radar_detector.analyze_frame(frame)
+            analyses.append(analysis)
+            progress_bar.progress(60 + (i + 1) * 20 / len(frames))
         
-        with col3:
-            st.markdown(f"""
-            <div class="metric-container">
-                <div class="metric-value">{video_info['duration']:.1f}s</div>
-                <div class="metric-label">Duração</div>
-            </div>
-            """, unsafe_allow_html=True)
+        st.session_state.frame_analyses = analyses
         
-        with col4:
-            st.markdown(f"""
-            <div class="metric-container">
-                <div class="metric-value">{video_info['resolution'][0]}x{video_info['resolution'][1]}</div>
-                <div class="metric-label">Resolução</div>
-            </div>
-            """, unsafe_allow_html=True)
+        # Passo 4: Gerar checklist consolidado
+        status_text.text("Gerando checklist consolidado...")
+        progress_bar.progress(90)
         
-        # Botão para processar vídeo
-        if st.button("Analisar Vídeo", type="primary", use_container_width=True):
-            
-            if not operator_name or not op_number:
-                st.error("Preencha o nome do técnico e número da OP")
-                return
-            
-            # Processar vídeo
-            with st.spinner("Extraindo frames do vídeo..."):
-                frames = video_processor.extract_frames_from_video(uploaded_video, num_frames=10)
-            
-            if not frames:
-                st.error("Falha na extração de frames")
-                return
-            
-            st.success(f"{len(frames)} frames extraídos com sucesso!")
-            
-            # Analisar cada frame
-            all_analyses = []
-            
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
-            for i, frame in enumerate(frames):
-                status_text.text(f"Analisando frame {i+1}/{len(frames)}...")
-                progress_bar.progress((i + 1) / len(frames))
-                
-                # Analisar frame
-                analysis_result = radar_detector.analyze_frame(frame)
-                all_analyses.append(analysis_result)
-            
-            progress_bar.empty()
-            status_text.empty()
-            
-            # Gerar checklist consolidado
-            operator_info = {'operator_name': operator_name, 'op_number': op_number}
-            consolidated_checklist = checklist_generator.generate_consolidated_checklist(
-                all_analyses, video_info, operator_info
-            )
-            
-            # Salvar no session state
-            st.session_state.frames = frames
-            st.session_state.analyses = all_analyses
-            st.session_state.video_info = video_info
-            st.session_state.operator_info = operator_info
-            st.session_state.consolidated_checklist = consolidated_checklist
-            
-            st.success("Análise concluída!")
+        video_info = st.session_state.video_processor.get_video_info(uploaded_file)
+        operator_info = {
+            'operator_name': operator_name,
+            'op_number': op_number
+        }
+        
+        consolidated = st.session_state.checklist_generator.generate_consolidated_checklist(
+            analyses, video_info, operator_info
+        )
+        
+        st.session_state.consolidated_checklist = consolidated
+        
+        # Passo 5: Finalizar
+        status_text.text("Análise concluída!")
+        progress_bar.progress(100)
+        
+        st.session_state.analysis_complete = True
+        
+        # Limpar barra de progresso após 2 segundos
+        import time
+        time.sleep(1)
+        progress_bar.empty()
+        status_text.empty()
+        
+        st.success("Análise concluída com sucesso!")
+        st.rerun()
+        
+    except Exception as e:
+        st.error(f"Erro durante análise: {str(e)}")
+        logger.error(f"Erro na análise: {e}")
+
+def render_analysis_results():
+    """Renderiza resultados da análise"""
+    if not st.session_state.consolidated_checklist:
+        return
     
-    # Exibir resultados se disponíveis
-    if 'consolidated_checklist' in st.session_state:
-        
-        frames = st.session_state.frames
-        analyses = st.session_state.analyses
-        consolidated_checklist = st.session_state.consolidated_checklist
-        
-        # Exibir checklist consolidado
-        display_consolidated_checklist(consolidated_checklist)
-        
-        # Análise frame por frame
-        st.markdown("## Análise Frame por Frame")
-        
-        # Seletor de frame
-        frame_options = [f"Frame {i+1}" for i in range(len(frames))]
-        selected_frame_idx = st.selectbox("Selecione um frame para visualizar:", 
-                                        range(len(frame_options)), 
+    checklist = st.session_state.consolidated_checklist
+    
+    st.subheader("Resultados da Análise")
+    
+    # Decisão final
+    decision = checklist['summary']['final_decision']
+    score = checklist['summary']['overall_score']
+    
+    if decision == "LIBERAR_LACRE":
+        st.markdown(f'<div class="status-approved">✅ LIBERAR LACRE</div>', 
+                   unsafe_allow_html=True)
+        st.success(f"Equipamento aprovado com score: {score:.1f}%")
+    else:
+        st.markdown(f'<div class="status-review">⚠️ REVISAR EQUIPAMENTO</div>', 
+                   unsafe_allow_html=True)
+        st.warning(f"Equipamento precisa de revisão. Score: {score:.1f}%")
+    
+    # Resumo dos componentes
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Componentes Críticos")
+        for component, data in checklist['components_analysis'].items():
+            if data.get('critical', False):
+                status = "✅" if data['detected'] else "❌"
+                confidence = data.get('confidence', 0)
+                st.write(f"{status} {component.replace('_', ' ').title()}: {confidence:.1f}%")
+    
+    with col2:
+        st.subheader("Componentes Opcionais")
+        for component, data in checklist['components_analysis'].items():
+            if not data.get('critical', True):
+                status = "✅" if data['detected'] else "❌"
+                confidence = data.get('confidence', 0)
+                st.write(f"{status} {component.replace('_', ' ').title()}: {confidence:.1f}%")
+    
+    # Análise frame-by-frame
+    st.subheader("Análise Frame-by-Frame")
+    
+    if st.session_state.extracted_frames:
+        frame_options = [f"Frame {i+1}" for i in range(len(st.session_state.extracted_frames))]
+        selected_frame_idx = st.selectbox("Selecione um frame:", range(len(frame_options)), 
                                         format_func=lambda x: frame_options[x])
         
-        # Exibir frame selecionado
         if selected_frame_idx is not None:
-            display_frame_analysis(selected_frame_idx + 1, 
-                                 frames[selected_frame_idx], 
-                                 analyses[selected_frame_idx],
-                                 checklist_generator)
-        
-        # Ações finais
-        st.markdown("## Ações")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            if st.button("Salvar Inspeção", type="primary"):
-                try:
-                    # Preparar dados para salvamento
-                    inspection_data = {
-                        'main': {
-                            'op_number': st.session_state.operator_info['op_number'],
-                            'operator_name': st.session_state.operator_info['operator_name'],
-                            'equipment_code': f"EQ-{datetime.now().strftime('%Y%m%d%H%M%S')}",
-                            'final_status': consolidated_checklist['summary']['final_decision'],
-                            'video_filename': st.session_state.video_info['filename'],
-                            'total_frames': len(frames),
-                            'average_score': consolidated_checklist['summary']['overall_score']
-                        },
-                        'consolidated_checklist': consolidated_checklist
-                    }
-                    
-                    # Salvar primeiro frame como imagem representativa
-                    inspection_id = storage.save_inspection(inspection_data, frames[0])
-                    
-                    if inspection_id:
-                        st.success(f"Inspeção salva! ID: {inspection_id}")
-                    else:
-                        st.error("Falha ao salvar inspeção")
-                        
-                except Exception as e:
-                    st.error(f"Erro ao salvar: {e}")
-        
-        with col2:
-            # Download do checklist
-            checklist_text = checklist_generator.format_checklist_for_display(consolidated_checklist)
-            st.download_button(
-                label="Download Checklist",
-                data=checklist_text,
-                file_name=f"checklist_{st.session_state.operator_info['op_number']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                mime="text/plain"
-            )
-        
-        with col3:
-            if st.button("Nova Análise"):
-                # Limpar session state
-                for key in ['frames', 'analyses', 'video_info', 'operator_info', 'consolidated_checklist']:
-                    if key in st.session_state:
-                        del st.session_state[key]
-                st.rerun()
-    
-    # Estatísticas históricas
-    st.markdown("## Estatísticas do Sistema")
-    
-    try:
-        stats = storage.get_statistics()
-        if stats and stats.get('totals'):
-            totals = stats['totals']
+            frame = st.session_state.extracted_frames[selected_frame_idx]
+            analysis = st.session_state.frame_analyses[selected_frame_idx]
             
-            col1, col2, col3, col4 = st.columns(4)
+            # Desenhar bounding boxes
+            annotated_frame = st.session_state.checklist_generator.draw_bounding_boxes(frame, analysis)
+            
+            col1, col2 = st.columns([2, 1])
             
             with col1:
-                st.markdown(f"""
-                <div class="metric-container">
-                    <div class="metric-value">{totals.get('total_inspections', 0)}</div>
-                    <div class="metric-label">Total de Inspeções</div>
-                </div>
-                """, unsafe_allow_html=True)
+                st.image(annotated_frame, caption=f"Frame {selected_frame_idx + 1} com detecções", 
+                        use_column_width=True)
             
             with col2:
-                st.markdown(f"""
-                <div class="metric-container">
-                    <div class="metric-value">{totals.get('approved_inspections', 0)}</div>
-                    <div class="metric-label">Aprovadas</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col3:
-                st.markdown(f"""
-                <div class="metric-container">
-                    <div class="metric-value">{totals.get('rejected_inspections', 0)}</div>
-                    <div class="metric-label">Reprovadas</div>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col4:
-                st.markdown(f"""
-                <div class="metric-container">
-                    <div class="metric-value">{totals.get('approval_rate', 0):.1f}%</div>
-                    <div class="metric-label">Taxa de Aprovação</div>
-                </div>
-                """, unsafe_allow_html=True)
+                st.subheader(f"Checklist Frame {selected_frame_idx + 1}")
+                frame_checklist = st.session_state.checklist_generator.generate_frame_checklist(
+                    selected_frame_idx + 1, analysis
+                )
+                
+                for item in frame_checklist['items']:
+                    status = "✅" if item['detected'] else "❌"
+                    st.write(f"{status} {item['component']}: {item['confidence']:.1f}%")
+    
+    # Ações finais
+    st.subheader("Ações")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("Salvar Inspeção"):
+            save_inspection()
+    
+    with col2:
+        if st.button("Download Checklist"):
+            download_checklist()
+    
+    with col3:
+        if st.button("Nova Análise"):
+            reset_analysis()
+
+def save_inspection():
+    """Salva inspeção no banco de dados"""
+    try:
+        if not st.session_state.consolidated_checklist:
+            st.error("Nenhuma análise para salvar")
+            return
+        
+        checklist = st.session_state.consolidated_checklist
+        
+        inspection_data = {
+            'main': {
+                'op_number': checklist['inspection_info']['op_number'],
+                'operator_name': checklist['inspection_info']['operator_name'],
+                'equipment_code': f"EQ-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                'final_status': checklist['summary']['final_decision'],
+                'video_filename': checklist['inspection_info']['video_filename'],
+                'total_frames': len(st.session_state.extracted_frames),
+                'average_score': checklist['summary']['overall_score']
+            },
+            'consolidated_checklist': checklist
+        }
+        
+        inspection_id = st.session_state.data_storage.save_inspection(inspection_data)
+        
+        if inspection_id:
+            st.success(f"Inspeção salva com ID: {inspection_id}")
         else:
-            st.info("Nenhuma estatística disponível ainda")
+            st.error("Falha ao salvar inspeção")
+            
     except Exception as e:
-        st.warning(f"Erro ao carregar estatísticas: {e}")
+        st.error(f"Erro ao salvar: {str(e)}")
+
+def download_checklist():
+    """Gera download do checklist"""
+    try:
+        if not st.session_state.consolidated_checklist:
+            st.error("Nenhum checklist para download")
+            return
+        
+        report_text = st.session_state.checklist_generator.format_checklist_for_display(
+            st.session_state.consolidated_checklist
+        )
+        
+        st.download_button(
+            label="Baixar Relatório",
+            data=report_text,
+            file_name=f"checklist_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            mime="text/plain"
+        )
+        
+    except Exception as e:
+        st.error(f"Erro ao gerar download: {str(e)}")
+
+def reset_analysis():
+    """Reseta análise para nova inspeção"""
+    st.session_state.current_video = None
+    st.session_state.extracted_frames = []
+    st.session_state.frame_analyses = []
+    st.session_state.consolidated_checklist = None
+    st.session_state.analysis_complete = False
+    st.rerun()
+
+def main():
+    """Função principal da aplicação"""
+    # Inicializar estado da sessão
+    initialize_session_state()
+    
+    # Renderizar interface
+    render_header()
+    
+    # Barra lateral
+    operator_name, op_number = render_sidebar()
+    
+    # Conteúdo principal
+    uploaded_file = render_video_upload()
+    
+    # Seção de análise
+    render_analysis_section(uploaded_file, operator_name, op_number)
 
 if __name__ == "__main__":
     main()

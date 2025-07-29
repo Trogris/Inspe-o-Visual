@@ -2,34 +2,41 @@
 
 Sistema MVP para inspeção automatizada de equipamentos com upload de vídeo, detecção IA e checklist automático.
 
-## 🚀 Instalação Rápida
+## 🚀 Instalação e Uso
 
+### 1. Instalar Dependências
 ```bash
-# 1. Instalar dependências
 pip install -r requirements.txt
+```
 
-# 2. Executar sistema
+### 2. Executar Sistema
+```bash
 streamlit run streamlit_clean_app.py
 ```
 
-## 📋 Funcionalidades
+### 3. Acessar Interface
+Abra o navegador em: `http://localhost:8501`
 
-- **Upload de Vídeo**: Suporte a MP4, MOV, AVI, MKV, WMV
-- **Extração de Frames**: 10 frames distribuídos automaticamente
-- **Detecção IA**: YOLOv8 para componentes de equipamentos radar
+## 📋 Como Usar
+
+1. **Configurar**: Preencha nome do técnico e número da OP na barra lateral
+2. **Upload**: Arraste o vídeo do equipamento finalizado (MP4, MOV, AVI, MKV, WMV)
+3. **Analisar**: Clique em "Analisar Vídeo" e aguarde o processamento
+4. **Revisar**: Visualize os resultados com bounding boxes e checklist
+5. **Decidir**: Sistema mostra LIBERAR LACRE ou REVISAR EQUIPAMENTO
+6. **Salvar**: Salve a inspeção ou baixe o relatório
+
+## ⚡ Funcionalidades
+
+- **Upload de Vídeo**: Suporte a múltiplos formatos até 100MB
+- **Extração Automática**: 10 frames distribuídos uniformemente
+- **Detecção IA**: YOLOv8 especializado para equipamentos radar
 - **Bounding Boxes**: Visualização com legendas e confiança
-- **Checklist Automático**: Decisão final LIBERAR LACRE ou REVISAR
+- **Checklist Automático**: Decisão final inteligente
 - **Interface Responsiva**: Design limpo e profissional
+- **Banco de Dados**: SQLite com histórico completo
 
-## 🎯 Como Usar
-
-1. Preencha nome do técnico e número da OP
-2. Faça upload do vídeo do equipamento finalizado
-3. Clique em "Analisar Vídeo"
-4. Revise os resultados frame-by-frame
-5. Baixe o checklist ou salve a inspeção
-
-## 📊 Componentes Detectados
+## 🎯 Componentes Detectados
 
 **Críticos:**
 - Etiqueta visível
@@ -42,24 +49,24 @@ streamlit run streamlit_clean_app.py
 - Cabeamento
 - Suportes
 
-## 🔧 Arquivos Principais
+## 🔧 Arquivos do Sistema
 
-- `streamlit_clean_app.py` - Interface principal
+- `streamlit_clean_app.py` - Interface principal (SEM ERROS DOM)
 - `video_processor.py` - Processamento de vídeo
-- `radar_detector.py` - Detecção IA
+- `radar_detector.py` - Detecção IA especializada
 - `checklist_generator.py` - Bounding boxes e checklists
-- `data_storage.py` - Banco de dados SQLite
+- `data_storage.py` - Banco SQLite
 
-## ⚡ Requisitos
+## 📊 Requisitos
 
 - Python 3.8+
-- 4GB RAM
+- 4GB RAM mínimo
 - Conexão com internet (download de modelos IA)
 
-## 📞 Status
+## ✅ Status
 
-✅ Sistema testado e funcional  
-✅ Pronto para produção  
-✅ Interface responsiva  
-✅ Testes 100% aprovados
+- Sistema 100% testado e funcional
+- Interface sem erros DOM
+- Pronto para produção
+- Deploy no Streamlit Cloud compatível
 
