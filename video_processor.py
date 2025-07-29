@@ -1,316 +1,238 @@
 #!/usr/bin/env python3
 """
-Módulo de Processamento de Vídeo - Sistema de Verificação Visual
-Extrai frames de vídeos para análise de equipamentos radar de trânsito
+Processador de Vídeo - Versão Corrigida
+Extração robusta de frames com tratamento de erros
 """
 
 import cv2
 import numpy as np
-import os
 import tempfile
-from datetime import datetime
+import os
 import logging
-from typing import List, Tuple, Optional
-import streamlit as st
+from typing import List, Dict, Optional, Any
 
-# Configuração de logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class VideoProcessor:
     """
-    Classe para processamento de vídeos de equipamentos radar
+    Processador de vídeo para extração de frames
     """
     
     def __init__(self):
         """Inicializa o processador de vídeo"""
-        self.supported_formats = ['.mp4', '.mov', '.avi', '.mkv', '.wmv']
-        self.target_frames = 10
+        self.supported_formats = ['mp4', 'mov', 'avi', 'mkv', 'wmv', 'mpeg4']
+        self.max_size_mb = 200  # Aumentado para 200MB
         logger.info("Processador de vídeo inicializado")
     
-    def validate_video_file(self, video_file) -> bool:
+    def validate_video_file(self, uploaded_file) -> bool:
         """
-        Valida se o arquivo de vídeo é suportado
+        Valida arquivo de vídeo
         
         Args:
-            video_file: Arquivo de vídeo carregado
+            uploaded_file: Arquivo enviado pelo Streamlit
             
         Returns:
             bool: True se válido, False caso contrário
         """
         try:
-            if video_file is None:
+            if not uploaded_file:
+                return False
+            
+            # Verificar tamanho
+            file_size_mb = uploaded_file.size / (1024 * 1024)
+            if file_size_mb > self.max_size_mb:
+                logger.error(f"Arquivo muito grande: {file_size_mb:.1f}MB (máximo: {self.max_size_mb}MB)")
                 return False
             
             # Verificar extensão
-            file_extension = os.path.splitext(video_file.name)[1].lower()
+            file_extension = uploaded_file.name.lower().split('.')[-1]
             if file_extension not in self.supported_formats:
-                logger.warning(f"Formato não suportado: {file_extension}")
+                logger.error(f"Formato não suportado: {file_extension}")
                 return False
             
-            # Verificar tamanho (máximo 100MB)
-            if video_file.size > 100 * 1024 * 1024:
-                logger.warning(f"Arquivo muito grande: {video_file.size} bytes")
-                return False
-            
-            logger.info(f"Arquivo válido: {video_file.name} ({video_file.size} bytes)")
+            logger.info(f"Arquivo válido: {uploaded_file.name} ({uploaded_file.size} bytes)")
             return True
             
         except Exception as e:
             logger.error(f"Erro na validação: {e}")
             return False
     
-    def extract_frames_from_video(self, video_file, num_frames: int = 10) -> List[np.ndarray]:
+    def get_video_info(self, uploaded_file) -> Optional[Dict[str, Any]]:
         """
-        Extrai frames distribuídos uniformemente do vídeo
+        Obtém informações básicas do vídeo
         
         Args:
-            video_file: Arquivo de vídeo carregado
-            num_frames: Número de frames a extrair (padrão: 10)
+            uploaded_file: Arquivo de vídeo
             
         Returns:
-            List[np.ndarray]: Lista de frames extraídos
+            Dict com informações ou None se erro
         """
-        frames = []
         temp_path = None
-        
         try:
-            # Salvar vídeo temporariamente
+            # Salvar arquivo temporário
             with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_file:
                 temp_path = temp_file.name
-                temp_file.write(video_file.read())
+                temp_file.write(uploaded_file.read())
             
-            # Abrir vídeo com OpenCV
+            # Abrir vídeo
             cap = cv2.VideoCapture(temp_path)
             
             if not cap.isOpened():
                 logger.error("Não foi possível abrir o vídeo")
-                return frames
+                return None
+            
+            # Obter informações básicas
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            
+            duration = frame_count / fps if fps > 0 else 0
+            size_mb = uploaded_file.size / (1024 * 1024)
+            
+            cap.release()
+            
+            return {
+                'filename': uploaded_file.name,
+                'size_mb': size_mb,
+                'duration': duration,
+                'fps': fps,
+                'total_frames': frame_count,
+                'resolution': (width, height),
+                'format': os.path.splitext(uploaded_file.name)[1].lower()
+            }
+            
+        except Exception as e:
+            logger.error(f"Erro ao obter informações do vídeo: {e}")
+            return None
+            
+        finally:
+            # Limpar arquivo temporário
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
+    
+    def extract_frames_from_video(self, uploaded_file, num_frames: int = 10) -> List[np.ndarray]:
+        """
+        Extrai frames distribuídos uniformemente do vídeo
+        
+        Args:
+            uploaded_file: Arquivo de vídeo
+            num_frames: Número de frames a extrair
+            
+        Returns:
+            Lista de frames como arrays numpy
+        """
+        temp_path = None
+        frames = []
+        
+        try:
+            # Salvar arquivo temporário
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_file:
+                temp_path = temp_file.name
+                # Reset file pointer
+                uploaded_file.seek(0)
+                temp_file.write(uploaded_file.read())
+            
+            # Abrir vídeo
+            cap = cv2.VideoCapture(temp_path)
+            
+            if not cap.isOpened():
+                logger.error("Não foi possível abrir o vídeo para extração")
+                return []
             
             # Obter informações do vídeo
             total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
             fps = cap.get(cv2.CAP_PROP_FPS)
-            duration = total_frames / fps if fps > 0 else 0
             
-            logger.info(f"Vídeo: {total_frames} frames, {fps:.2f} FPS, {duration:.2f}s")
+            if total_frames <= 0:
+                logger.error("Vídeo não contém frames válidos")
+                cap.release()
+                return []
             
-            if total_frames < num_frames:
-                logger.warning(f"Vídeo tem apenas {total_frames} frames, extraindo todos")
-                num_frames = total_frames
+            logger.info(f"Vídeo: {total_frames} frames, {fps:.2f} FPS")
             
             # Calcular posições dos frames
-            frame_positions = np.linspace(0, total_frames - 1, num_frames, dtype=int)
+            if total_frames < num_frames:
+                # Se o vídeo tem menos frames que o solicitado, usar todos
+                frame_positions = list(range(total_frames))
+            else:
+                # Distribuir uniformemente
+                step = max(1, total_frames // num_frames)
+                frame_positions = [i * step for i in range(num_frames)]
+                # Garantir que não exceda o total
+                frame_positions = [min(pos, total_frames - 1) for pos in frame_positions]
             
+            # Extrair frames
             for i, frame_pos in enumerate(frame_positions):
-                # Ir para a posição do frame
                 cap.set(cv2.CAP_PROP_POS_FRAMES, frame_pos)
-                
-                # Ler frame
                 ret, frame = cap.read()
                 
-                if ret:
-                    # Converter BGR para RGB (OpenCV usa BGR, mas queremos RGB)
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    frames.append(frame_rgb)
+                if ret and frame is not None:
+                    # Redimensionar se muito grande (otimização)
+                    height, width = frame.shape[:2]
+                    if width > 1920 or height > 1080:
+                        # Redimensionar mantendo proporção
+                        scale = min(1920/width, 1080/height)
+                        new_width = int(width * scale)
+                        new_height = int(height * scale)
+                        frame = cv2.resize(frame, (new_width, new_height))
                     
-                    timestamp = frame_pos / fps if fps > 0 else 0
-                    logger.info(f"Frame {i+1}/{num_frames} extraído (posição: {frame_pos}, tempo: {timestamp:.2f}s)")
+                    frames.append(frame)
+                    time_seconds = frame_pos / fps if fps > 0 else 0
+                    logger.info(f"Frame {i+1}/{len(frame_positions)} extraído (posição: {frame_pos}, tempo: {time_seconds:.2f}s)")
                 else:
-                    logger.warning(f"Falha ao ler frame na posição {frame_pos}")
+                    logger.warning(f"Falha ao extrair frame na posição {frame_pos}")
             
             cap.release()
             
-            logger.info(f"Extração concluída: {len(frames)} frames extraídos")
+            if frames:
+                logger.info(f"Extração concluída: {len(frames)} frames extraídos")
+            else:
+                logger.error("Nenhum frame foi extraído com sucesso")
+            
+            return frames
             
         except Exception as e:
             logger.error(f"Erro na extração de frames: {e}")
-        
+            return []
+            
         finally:
             # Limpar arquivo temporário
             if temp_path and os.path.exists(temp_path):
                 try:
                     os.unlink(temp_path)
-                except Exception as e:
-                    logger.warning(f"Erro ao remover arquivo temporário: {e}")
-        
-        return frames
+                except:
+                    pass
     
-    def get_video_info(self, video_file) -> dict:
+    def validate_frame(self, frame: np.ndarray) -> bool:
         """
-        Obtém informações detalhadas do vídeo
+        Valida se um frame é válido
         
         Args:
-            video_file: Arquivo de vídeo carregado
+            frame: Frame como array numpy
             
         Returns:
-            dict: Informações do vídeo
+            bool: True se válido
         """
-        info = {
-            'filename': '',
-            'size_mb': 0,
-            'duration': 0,
-            'fps': 0,
-            'total_frames': 0,
-            'resolution': (0, 0),
-            'format': ''
-        }
-        
-        temp_path = None
-        
         try:
-            # Informações básicas do arquivo
-            info['filename'] = video_file.name
-            info['size_mb'] = video_file.size / (1024 * 1024)
-            info['format'] = os.path.splitext(video_file.name)[1].lower()
+            if frame is None:
+                return False
             
-            # Salvar temporariamente para análise
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as temp_file:
-                temp_path = temp_file.name
-                temp_file.write(video_file.read())
+            if not isinstance(frame, np.ndarray):
+                return False
             
-            # Analisar com OpenCV
-            cap = cv2.VideoCapture(temp_path)
+            if len(frame.shape) != 3:
+                return False
             
-            if cap.isOpened():
-                info['total_frames'] = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                info['fps'] = cap.get(cv2.CAP_PROP_FPS)
-                info['duration'] = info['total_frames'] / info['fps'] if info['fps'] > 0 else 0
-                
-                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                info['resolution'] = (width, height)
-                
-                cap.release()
+            height, width, channels = frame.shape
+            if height < 100 or width < 100 or channels != 3:
+                return False
             
-        except Exception as e:
-            logger.error(f"Erro ao obter informações do vídeo: {e}")
-        
-        finally:
-            # Limpar arquivo temporário
-            if temp_path and os.path.exists(temp_path):
-                try:
-                    os.unlink(temp_path)
-                except Exception as e:
-                    logger.warning(f"Erro ao remover arquivo temporário: {e}")
-        
-        return info
-    
-    def save_frames(self, frames: List[np.ndarray], output_dir: str, prefix: str = "frame") -> List[str]:
-        """
-        Salva frames extraídos como imagens
-        
-        Args:
-            frames: Lista de frames
-            output_dir: Diretório de saída
-            prefix: Prefixo para nomes dos arquivos
+            return True
             
-        Returns:
-            List[str]: Lista de caminhos dos arquivos salvos
-        """
-        saved_paths = []
-        
-        try:
-            # Criar diretório se não existir
-            os.makedirs(output_dir, exist_ok=True)
-            
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            
-            for i, frame in enumerate(frames):
-                filename = f"{prefix}_{timestamp}_{i+1:02d}.jpg"
-                filepath = os.path.join(output_dir, filename)
-                
-                # Converter RGB para BGR para salvar com OpenCV
-                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                
-                # Salvar imagem
-                success = cv2.imwrite(filepath, frame_bgr)
-                
-                if success:
-                    saved_paths.append(filepath)
-                    logger.info(f"Frame {i+1} salvo: {filepath}")
-                else:
-                    logger.error(f"Falha ao salvar frame {i+1}")
-            
-        except Exception as e:
-            logger.error(f"Erro ao salvar frames: {e}")
-        
-        return saved_paths
-    
-    def create_frame_summary(self, frames: List[np.ndarray], video_info: dict) -> dict:
-        """
-        Cria resumo dos frames extraídos
-        
-        Args:
-            frames: Lista de frames extraídos
-            video_info: Informações do vídeo
-            
-        Returns:
-            dict: Resumo dos frames
-        """
-        summary = {
-            'total_frames_extracted': len(frames),
-            'extraction_timestamp': datetime.now().isoformat(),
-            'video_info': video_info,
-            'frame_details': []
-        }
-        
-        try:
-            duration = video_info.get('duration', 0)
-            total_frames = video_info.get('total_frames', 0)
-            
-            for i, frame in enumerate(frames):
-                # Calcular timestamp do frame
-                if duration > 0 and len(frames) > 1:
-                    timestamp = (duration / (len(frames) - 1)) * i
-                else:
-                    timestamp = 0
-                
-                # Calcular posição do frame
-                if total_frames > 0 and len(frames) > 1:
-                    frame_position = int((total_frames / (len(frames) - 1)) * i)
-                else:
-                    frame_position = 0
-                
-                frame_info = {
-                    'frame_number': i + 1,
-                    'timestamp_seconds': round(timestamp, 2),
-                    'frame_position': frame_position,
-                    'resolution': frame.shape[:2][::-1],  # (width, height)
-                    'size_bytes': frame.nbytes
-                }
-                
-                summary['frame_details'].append(frame_info)
-            
-        except Exception as e:
-            logger.error(f"Erro ao criar resumo: {e}")
-        
-        return summary
-
-
-def test_video_processor():
-    """Função de teste do processador de vídeo"""
-    processor = VideoProcessor()
-    
-    print("=== TESTE DO PROCESSADOR DE VÍDEO ===")
-    print(f"Formatos suportados: {processor.supported_formats}")
-    print(f"Frames alvo: {processor.target_frames}")
-    
-    # Teste com arquivo fictício
-    class MockVideoFile:
-        def __init__(self):
-            self.name = "test_video.mp4"
-            self.size = 1024 * 1024  # 1MB
-        
-        def read(self):
-            return b"mock_video_data"
-    
-    mock_file = MockVideoFile()
-    is_valid = processor.validate_video_file(mock_file)
-    print(f"Validação de arquivo mock: {is_valid}")
-    
-    print("Processador de vídeo testado com sucesso!")
-
-
-if __name__ == "__main__":
-    test_video_processor()
+        except:
+            return False
 

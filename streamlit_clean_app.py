@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Sistema de Verificação Visual Automatizada
-Interface Streamlit - Versão Final Estável
+Interface Streamlit - Versão Simplificada e Robusta
 """
 
 import streamlit as st
@@ -42,30 +42,35 @@ st.markdown("""
 <style>
     .main-header {
         background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        padding: 1rem;
+        padding: 1.5rem;
         border-radius: 10px;
         color: white;
         text-align: center;
         margin-bottom: 2rem;
     }
     
-    .metric-card {
-        background: white;
+    .status-approved {
+        background-color: #d4edda;
+        color: #155724;
         padding: 1rem;
         border-radius: 8px;
-        border-left: 4px solid #667eea;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        margin-bottom: 1rem;
-    }
-    
-    .status-approved {
-        color: #28a745;
+        border-left: 4px solid #28a745;
         font-weight: bold;
+        font-size: 1.2em;
+        text-align: center;
+        margin: 1rem 0;
     }
     
     .status-review {
-        color: #dc3545;
+        background-color: #f8d7da;
+        color: #721c24;
+        padding: 1rem;
+        border-radius: 8px;
+        border-left: 4px solid #dc3545;
         font-weight: bold;
+        font-size: 1.2em;
+        text-align: center;
+        margin: 1rem 0;
     }
     
     .component-critical {
@@ -84,12 +89,12 @@ st.markdown("""
         margin: 0.2rem 0;
     }
     
-    .upload-area {
-        border: 2px dashed #667eea;
-        border-radius: 10px;
-        padding: 2rem;
-        text-align: center;
-        background-color: #f8f9fa;
+    .upload-success {
+        background-color: #d4edda;
+        color: #155724;
+        padding: 1rem;
+        border-radius: 8px;
+        border-left: 4px solid #28a745;
         margin: 1rem 0;
     }
     
@@ -98,8 +103,9 @@ st.markdown("""
         color: white;
         border: none;
         border-radius: 8px;
-        padding: 0.5rem 2rem;
+        padding: 0.75rem 2rem;
         font-weight: bold;
+        width: 100%;
     }
     
     .stButton > button:hover {
@@ -196,14 +202,17 @@ def render_sidebar():
     
     # Estatísticas
     st.sidebar.subheader("Estatísticas")
-    stats = st.session_state.data_storage.get_statistics()
-    
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        st.metric("Total", stats.get('total_inspections', 0))
-    with col2:
-        approval_rate = stats.get('approval_rate', 0)
-        st.metric("Aprovação", f"{approval_rate:.1f}%")
+    try:
+        stats = st.session_state.data_storage.get_statistics()
+        
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            st.metric("Total", stats.get('total_inspections', 0))
+        with col2:
+            approval_rate = stats.get('approval_rate', 0)
+            st.metric("Aprovação", f"{approval_rate:.1f}%")
+    except:
+        st.sidebar.write("Estatísticas não disponíveis")
     
     return operator_name, op_number
 
@@ -214,49 +223,39 @@ def render_video_upload():
     uploaded_file = st.file_uploader(
         "Selecione o vídeo do equipamento finalizado",
         type=['mp4', 'mov', 'avi', 'mkv', 'wmv'],
-        help="Formatos suportados: MP4, MOV, AVI, MKV, WMV (máximo 100MB)"
+        help="Arraste o arquivo ou clique para selecionar"
     )
     
     if uploaded_file is not None:
         # Validar arquivo
         if st.session_state.video_processor.validate_video_file(uploaded_file):
-            st.success(f"Vídeo carregado: {uploaded_file.name}")
+            st.markdown(f"""
+            <div class="upload-success">
+                ✅ Vídeo carregado com sucesso: <strong>{uploaded_file.name}</strong>
+            </div>
+            """, unsafe_allow_html=True)
             
-            # Obter informações do vídeo
-            video_info = st.session_state.video_processor.get_video_info(uploaded_file)
-            
-            if video_info:
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Duração", f"{video_info['duration']:.1f}s")
-                with col2:
-                    st.metric("Tamanho", f"{video_info['size_mb']:.1f} MB")
-                with col3:
-                    st.metric("Resolução", f"{video_info['resolution'][0]}x{video_info['resolution'][1]}")
-                with col4:
-                    st.metric("FPS", f"{video_info['fps']:.0f}")
-                
-                st.session_state.current_video = uploaded_file
-                return uploaded_file
+            st.session_state.current_video = uploaded_file
+            return uploaded_file
         else:
-            st.error("Arquivo de vídeo inválido ou muito grande (máximo 100MB)")
+            st.error("Arquivo de vídeo inválido ou muito grande (máximo 200MB)")
     
     return None
 
 def render_analysis_section(uploaded_file, operator_name, op_number):
     """Renderiza seção de análise"""
     if uploaded_file is None:
-        st.info("Faça upload de um vídeo para iniciar a análise")
+        st.info("📤 Faça upload de um vídeo para iniciar a análise")
         return
     
     if not operator_name or not op_number:
-        st.warning("Preencha o nome do técnico e número da OP na barra lateral")
+        st.warning("⚠️ Preencha o nome do técnico e número da OP na barra lateral")
         return
     
     st.subheader("Análise do Vídeo")
     
     # Botão para iniciar análise
-    if st.button("Analisar Vídeo", type="primary"):
+    if st.button("🔍 Analisar Vídeo", type="primary"):
         analyze_video(uploaded_file, operator_name, op_number)
     
     # Mostrar resultados se análise foi concluída
@@ -266,73 +265,81 @@ def render_analysis_section(uploaded_file, operator_name, op_number):
 def analyze_video(uploaded_file, operator_name, op_number):
     """Executa análise completa do vídeo"""
     try:
-        # Barra de progresso
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+        # Container para progresso
+        progress_container = st.container()
         
-        # Passo 1: Extrair frames
-        status_text.text("Extraindo frames do vídeo...")
-        progress_bar.progress(20)
+        with progress_container:
+            # Barra de progresso
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            # Passo 1: Extrair frames
+            status_text.text("🎬 Extraindo frames do vídeo...")
+            progress_bar.progress(20)
+            
+            frames = st.session_state.video_processor.extract_frames_from_video(uploaded_file, num_frames=10)
+            
+            if not frames:
+                st.error("❌ Falha na extração de frames. Verifique se o vídeo está correto.")
+                return
+            
+            st.session_state.extracted_frames = frames
+            
+            # Passo 2: Carregar modelo IA
+            status_text.text("🤖 Carregando modelo de IA...")
+            progress_bar.progress(40)
+            
+            st.session_state.radar_detector.load_model()
+            
+            # Passo 3: Analisar frames
+            status_text.text("🔍 Analisando frames com IA...")
+            progress_bar.progress(60)
+            
+            analyses = []
+            for i, frame in enumerate(frames):
+                analysis = st.session_state.radar_detector.analyze_frame(frame)
+                analyses.append(analysis)
+                progress_bar.progress(60 + (i + 1) * 20 / len(frames))
+            
+            st.session_state.frame_analyses = analyses
+            
+            # Passo 4: Gerar checklist consolidado
+            status_text.text("📋 Gerando checklist consolidado...")
+            progress_bar.progress(90)
+            
+            video_info = {
+                'filename': uploaded_file.name,
+                'size_mb': uploaded_file.size / (1024 * 1024)
+            }
+            
+            operator_info = {
+                'operator_name': operator_name,
+                'op_number': op_number
+            }
+            
+            consolidated = st.session_state.checklist_generator.generate_consolidated_checklist(
+                analyses, video_info, operator_info
+            )
+            
+            st.session_state.consolidated_checklist = consolidated
+            
+            # Passo 5: Finalizar
+            status_text.text("✅ Análise concluída!")
+            progress_bar.progress(100)
+            
+            st.session_state.analysis_complete = True
+            
+            # Limpar barra de progresso
+            import time
+            time.sleep(1)
+            progress_bar.empty()
+            status_text.empty()
         
-        frames = st.session_state.video_processor.extract_frames_from_video(uploaded_file, num_frames=10)
-        
-        if not frames:
-            st.error("Falha na extração de frames")
-            return
-        
-        st.session_state.extracted_frames = frames
-        
-        # Passo 2: Carregar modelo IA
-        status_text.text("Carregando modelo de IA...")
-        progress_bar.progress(40)
-        
-        st.session_state.radar_detector.load_model()
-        
-        # Passo 3: Analisar frames
-        status_text.text("Analisando frames com IA...")
-        progress_bar.progress(60)
-        
-        analyses = []
-        for i, frame in enumerate(frames):
-            analysis = st.session_state.radar_detector.analyze_frame(frame)
-            analyses.append(analysis)
-            progress_bar.progress(60 + (i + 1) * 20 / len(frames))
-        
-        st.session_state.frame_analyses = analyses
-        
-        # Passo 4: Gerar checklist consolidado
-        status_text.text("Gerando checklist consolidado...")
-        progress_bar.progress(90)
-        
-        video_info = st.session_state.video_processor.get_video_info(uploaded_file)
-        operator_info = {
-            'operator_name': operator_name,
-            'op_number': op_number
-        }
-        
-        consolidated = st.session_state.checklist_generator.generate_consolidated_checklist(
-            analyses, video_info, operator_info
-        )
-        
-        st.session_state.consolidated_checklist = consolidated
-        
-        # Passo 5: Finalizar
-        status_text.text("Análise concluída!")
-        progress_bar.progress(100)
-        
-        st.session_state.analysis_complete = True
-        
-        # Limpar barra de progresso após 2 segundos
-        import time
-        time.sleep(1)
-        progress_bar.empty()
-        status_text.empty()
-        
-        st.success("Análise concluída com sucesso!")
+        st.success("🎉 Análise concluída com sucesso!")
         st.rerun()
         
     except Exception as e:
-        st.error(f"Erro durante análise: {str(e)}")
+        st.error(f"❌ Erro durante análise: {str(e)}")
         logger.error(f"Erro na análise: {e}")
 
 def render_analysis_results():
@@ -349,13 +356,19 @@ def render_analysis_results():
     score = checklist['summary']['overall_score']
     
     if decision == "LIBERAR_LACRE":
-        st.markdown(f'<div class="status-approved">✅ LIBERAR LACRE</div>', 
-                   unsafe_allow_html=True)
-        st.success(f"Equipamento aprovado com score: {score:.1f}%")
+        st.markdown(f"""
+        <div class="status-approved">
+            ✅ LIBERAR LACRE<br>
+            Equipamento aprovado com score: {score:.1f}%
+        </div>
+        """, unsafe_allow_html=True)
     else:
-        st.markdown(f'<div class="status-review">⚠️ REVISAR EQUIPAMENTO</div>', 
-                   unsafe_allow_html=True)
-        st.warning(f"Equipamento precisa de revisão. Score: {score:.1f}%")
+        st.markdown(f"""
+        <div class="status-review">
+            ⚠️ REVISAR EQUIPAMENTO<br>
+            Equipamento precisa de revisão. Score: {score:.1f}%
+        </div>
+        """, unsafe_allow_html=True)
     
     # Resumo dos componentes
     col1, col2 = st.columns(2)
@@ -366,7 +379,7 @@ def render_analysis_results():
             if data.get('critical', False):
                 status = "✅" if data['detected'] else "❌"
                 confidence = data.get('confidence', 0)
-                st.write(f"{status} {component.replace('_', ' ').title()}: {confidence:.1f}%")
+                st.write(f"{status} **{component.replace('_', ' ').title()}**: {confidence:.1f}%")
     
     with col2:
         st.subheader("Componentes Opcionais")
@@ -374,7 +387,7 @@ def render_analysis_results():
             if not data.get('critical', True):
                 status = "✅" if data['detected'] else "❌"
                 confidence = data.get('confidence', 0)
-                st.write(f"{status} {component.replace('_', ' ').title()}: {confidence:.1f}%")
+                st.write(f"{status} **{component.replace('_', ' ').title()}**: {confidence:.1f}%")
     
     # Análise frame-by-frame
     st.subheader("Análise Frame-by-Frame")
@@ -405,7 +418,7 @@ def render_analysis_results():
                 
                 for item in frame_checklist['items']:
                     status = "✅" if item['detected'] else "❌"
-                    st.write(f"{status} {item['component']}: {item['confidence']:.1f}%")
+                    st.write(f"{status} **{item['component']}**: {item['confidence']:.1f}%")
     
     # Ações finais
     st.subheader("Ações")
@@ -413,15 +426,15 @@ def render_analysis_results():
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        if st.button("Salvar Inspeção"):
+        if st.button("💾 Salvar Inspeção"):
             save_inspection()
     
     with col2:
-        if st.button("Download Checklist"):
+        if st.button("📄 Download Checklist"):
             download_checklist()
     
     with col3:
-        if st.button("Nova Análise"):
+        if st.button("🔄 Nova Análise"):
             reset_analysis()
 
 def save_inspection():
@@ -449,12 +462,12 @@ def save_inspection():
         inspection_id = st.session_state.data_storage.save_inspection(inspection_data)
         
         if inspection_id:
-            st.success(f"Inspeção salva com ID: {inspection_id}")
+            st.success(f"✅ Inspeção salva com ID: {inspection_id}")
         else:
-            st.error("Falha ao salvar inspeção")
+            st.error("❌ Falha ao salvar inspeção")
             
     except Exception as e:
-        st.error(f"Erro ao salvar: {str(e)}")
+        st.error(f"❌ Erro ao salvar: {str(e)}")
 
 def download_checklist():
     """Gera download do checklist"""
@@ -468,14 +481,14 @@ def download_checklist():
         )
         
         st.download_button(
-            label="Baixar Relatório",
+            label="📥 Baixar Relatório",
             data=report_text,
             file_name=f"checklist_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
             mime="text/plain"
         )
         
     except Exception as e:
-        st.error(f"Erro ao gerar download: {str(e)}")
+        st.error(f"❌ Erro ao gerar download: {str(e)}")
 
 def reset_analysis():
     """Reseta análise para nova inspeção"""
